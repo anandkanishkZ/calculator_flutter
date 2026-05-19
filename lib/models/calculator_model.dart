@@ -1,9 +1,13 @@
 class CalculatorModel {
-  String _expression = '';
+  String _first = '';
+  String _operator = '';
+  String _second = '';
+  bool _showResult = false;
 
-  String get expression => _expression;
-
-  static const Set<String> _operators = {'+', '-', '*', '/', '%'};
+  String get expression {
+    if (_showResult) return _first;
+    return _first + _operator + _second;
+  }
 
   void input(String token) {
     if (token == 'C') {
@@ -12,165 +16,130 @@ class CalculatorModel {
       backspace();
     } else if (token == '=') {
       evaluate();
-    } else if (_operators.contains(token)) {
-      _appendOperator(token);
-    } else if (token == '.') {
-      _appendDecimal();
+    } else if (_isOperator(token)) {
+      _pressOperator(token);
     } else {
-      _appendDigit(token);
+      _pressDigit(token);
     }
   }
 
   void clear() {
-    _expression = '';
+    _first = '';
+    _operator = '';
+    _second = '';
+    _showResult = false;
   }
 
   void backspace() {
-    if (_expression.isNotEmpty) {
-      _expression = _expression.substring(0, _expression.length - 1);
-    }
-  }
-
-  void _appendDigit(String digit) {
-    _expression += digit;
-  }
-
-  void _appendOperator(String op) {
-    if (_expression.isEmpty) {
-      if (op == '-') _expression = '-';
+    if (_showResult) {
+      clear();
       return;
     }
-    final last = _expression[_expression.length - 1];
-    if (_operators.contains(last)) {
-      _expression = _expression.substring(0, _expression.length - 1) + op;
+    if (_second.isNotEmpty) {
+      _second = _second.substring(0, _second.length - 1);
+    } else if (_operator.isNotEmpty) {
+      _operator = '';
+    } else if (_first.isNotEmpty) {
+      _first = _first.substring(0, _first.length - 1);
+    }
+  }
+
+  bool _isOperator(String token) {
+    return token == '+' || token == '-' || token == '*' || token == '/' || token == '%';
+  }
+
+  void _pressDigit(String digit) {
+    if (_showResult) {
+      clear();
+    }
+    if (_operator.isEmpty) {
+      if (digit == '.' && _first.contains('.')) return;
+      _first += digit;
     } else {
-      _expression += op;
+      if (digit == '.' && _second.contains('.')) return;
+      _second += digit;
     }
   }
 
-  void _appendDecimal() {
-    if (_expression.isEmpty || _operators.contains(_expression[_expression.length - 1])) {
-      _expression += '0.';
+  void _pressOperator(String op) {
+    if (_showResult) {
+      _operator = op;
+      _second = '';
+      _showResult = false;
       return;
     }
-    int i = _expression.length - 1;
-    while (i >= 0 && !_operators.contains(_expression[i])) {
-      if (_expression[i] == '.') return;
-      i--;
+    if (_first.isEmpty) {
+      if (op == '-') _first = '-';
+      return;
     }
-    _expression += '.';
+    if (_second.isNotEmpty) {
+      evaluate();
+      _operator = op;
+      _second = '';
+      _showResult = false;
+    } else {
+      _operator = op;
+    }
   }
 
   String evaluate() {
-    if (_expression.isEmpty) return '';
-    try {
-      var expr = _expression;
-      while (expr.isNotEmpty && _operators.contains(expr[expr.length - 1])) {
-        expr = expr.substring(0, expr.length - 1);
-      }
-      if (expr.isEmpty) return _expression;
-
-      final tokens = _tokenize(expr);
-      final rpn = _toRpn(tokens);
-      final result = _evalRpn(rpn);
-      _expression = _formatResult(result);
-      return _expression;
-    } catch (_) {
-      _expression = 'Error';
-      return _expression;
+    if (_first.isEmpty || _operator.isEmpty || _second.isEmpty) {
+      return expression;
     }
+
+    final a = double.tryParse(_first);
+    final b = double.tryParse(_second);
+    if (a == null || b == null) {
+      _first = 'Error';
+      _operator = '';
+      _second = '';
+      _showResult = true;
+      return _first;
+    }
+
+    double result;
+    switch (_operator) {
+      case '+':
+        result = a + b;
+        break;
+      case '-':
+        result = a - b;
+        break;
+      case '*':
+        result = a * b;
+        break;
+      case '/':
+        if (b == 0) return _setError();
+        result = a / b;
+        break;
+      case '%':
+        if (b == 0) return _setError();
+        result = a % b;
+        break;
+      default:
+        return expression;
+    }
+
+    _first = _format(result);
+    _operator = '';
+    _second = '';
+    _showResult = true;
+    return _first;
   }
 
-  List<String> _tokenize(String expr) {
-    final tokens = <String>[];
-    var buffer = '';
-    for (int i = 0; i < expr.length; i++) {
-      final c = expr[i];
-      if (_operators.contains(c)) {
-        if (c == '-' && (i == 0 || _operators.contains(expr[i - 1]))) {
-          buffer += c;
-        } else {
-          if (buffer.isNotEmpty) {
-            tokens.add(buffer);
-            buffer = '';
-          }
-          tokens.add(c);
-        }
-      } else {
-        buffer += c;
-      }
-    }
-    if (buffer.isNotEmpty) tokens.add(buffer);
-    return tokens;
+  String _setError() {
+    _first = 'Error';
+    _operator = '';
+    _second = '';
+    _showResult = true;
+    return _first;
   }
 
-  int _precedence(String op) {
-    if (op == '+' || op == '-') return 1;
-    if (op == '*' || op == '/' || op == '%') return 2;
-    return 0;
-  }
-
-  List<String> _toRpn(List<String> tokens) {
-    final output = <String>[];
-    final stack = <String>[];
-    for (final t in tokens) {
-      if (_operators.contains(t)) {
-        while (stack.isNotEmpty && _precedence(stack.last) >= _precedence(t)) {
-          output.add(stack.removeLast());
-        }
-        stack.add(t);
-      } else {
-        output.add(t);
-      }
-    }
-    while (stack.isNotEmpty) {
-      output.add(stack.removeLast());
-    }
-    return output;
-  }
-
-  double _evalRpn(List<String> rpn) {
-    final stack = <double>[];
-    for (final t in rpn) {
-      if (_operators.contains(t)) {
-        if (stack.length < 2) throw const FormatException('Invalid expression');
-        final b = stack.removeLast();
-        final a = stack.removeLast();
-        switch (t) {
-          case '+':
-            stack.add(a + b);
-            break;
-          case '-':
-            stack.add(a - b);
-            break;
-          case '*':
-            stack.add(a * b);
-            break;
-          case '/':
-            if (b == 0) throw const FormatException('Divide by zero');
-            stack.add(a / b);
-            break;
-          case '%':
-            if (b == 0) throw const FormatException('Modulo by zero');
-            stack.add(a % b);
-            break;
-        }
-      } else {
-        stack.add(double.parse(t));
-      }
-    }
-    if (stack.length != 1) throw const FormatException('Invalid expression');
-    return stack.single;
-  }
-
-  String _formatResult(double value) {
+  String _format(double value) {
     if (value.isNaN || value.isInfinite) return 'Error';
-    if (value == value.truncateToDouble() && value.abs() < 1e16) {
+    if (value == value.truncateToDouble()) {
       return value.toInt().toString();
     }
-    var s = value.toStringAsFixed(10);
-    s = s.replaceFirst(RegExp(r'0+$'), '');
-    s = s.replaceFirst(RegExp(r'\.$'), '');
-    return s;
+    return value.toString();
   }
 }
